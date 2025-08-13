@@ -3,238 +3,295 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '../../hooks/useAuth';
+import { supabase, BlogPost } from '../../lib/supabase';
 import { GeminiService } from '../../lib/services/gemini';
 import { StorageService } from '../../lib/services/storage';
-import { useAuth } from '../../hooks/useAuth';
 
 export default function CreateScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const { draft: draftId } = useLocalSearchParams();
-  
+  const { id } = useLocalSearchParams();
+  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['twitter']);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [published, setPublished] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-
-  const platforms = [
-    { id: 'twitter', name: 'Twitter', color: 'bg-blue-400' },
-    { id: 'linkedin', name: 'LinkedIn', color: 'bg-blue-600' },
-    { id: 'facebook', name: 'Facebook', color: 'bg-blue-700' },
-    { id: 'instagram', name: 'Instagram', color: 'bg-pink-600' },
-  ];
+  const [aiLoading, setAiLoading] = useState(false);
+  const [currentPost, setCurrentPost] = useState<BlogPost | null>(null);
 
   useEffect(() => {
-    if (draftId) {
+    if (id && typeof id === 'string') {
+      loadPost(id);
+    } else {
       loadDraft();
     }
-  }, [draftId]);
+  }, [id]);
+
+  useEffect(() => {
+    // Auto-save draft every 30 seconds
+    const interval = setInterval(() => {
+      if (title || content) {
+        saveDraft();
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [title, content]);
+
+  const loadPost = async (postId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .eq('id', postId)
+        .eq('user_id', user?.id)
+        .single();
+
+      if (error) throw error;
+      
+      setCurrentPost(data);
+      setTitle(data.title);
+      setContent(data.content);
+      setPublished(data.published);
+    } catch (error) {
+      console.error('Load post error:', error);
+      Alert.alert('Error', 'Failed to load post');
+    }
+  };
 
   const loadDraft = async () => {
     try {
-      const drafts = await StorageService.getDrafts();
-      const draft = drafts.find(d => d.id === draftId);
+      const draft = await StorageService.getDraft('current');
       if (draft) {
+        setTitle(draft.title);
         setContent(draft.content);
-        setSelectedPlatforms(draft.platforms);
       }
     } catch (error) {
       console.error('Load draft error:', error);
     }
   };
 
-  const generateSuggestions = async () => {
-    if (!content.trim()) {
-      Alert.alert('Error', 'Please enter some content first');
-      return;
-    }
-
-    setLoadingSuggestions(true);
-    try {
-      const suggestion = await GeminiService.improveContent(content);
-      setSuggestions([suggestion]);
-    } catch (error) {
-      console.error('Generate suggestions error:', error);
-      Alert.alert('Error', 'Failed to generate suggestions. Please try again.');
-    } finally {
-      setLoadingSuggestions(false);
-    }
-  };
-
-  const generateFromPrompt = async () => {
-    Alert.prompt(
-      'Content Idea',
-      'What would you like to post about?',
-      async (prompt) => {
-        if (prompt) {
-          setLoadingSuggestions(true);
-          try {
-            const suggestion = await GeminiService.generateContentSuggestions(prompt);
-            setSuggestions([suggestion]);
-          } catch (error) {
-            console.error('Generate from prompt error:', error);
-            Alert.alert('Error', 'Failed to generate content. Please try again.');
-          } finally {
-            setLoadingSuggestions(false);
-          }
-        }
-      }
-    );
-  };
-
-  const togglePlatform = (platformId: string) => {
-    setSelectedPlatforms(prev => 
-      prev.includes(platformId) 
-        ? prev.filter(p => p !== platformId)
-        : [...prev, platformId]
-    );
-  };
-
   const saveDraft = async () => {
-    if (!content.trim()) {
-      Alert.alert('Error', 'Please enter some content first');
-      return;
-    }
-
     try {
-      if (draftId) {
-        await StorageService.updateDraft(draftId as string, {
-          content,
-          platforms: selectedPlatforms,
-        });
-      } else {
-        await StorageService.saveDraft({
-          content,
-          platforms: selectedPlatforms,
-        });
-      }
-      Alert.alert('Success', 'Draft saved successfully!');
+      await StorageService.saveDraft('current', {
+        id: 'current',
+        title,
+        content,
+        created_at: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('Save draft error:', error);
-      Alert.alert('Error', 'Failed to save draft');
     }
   };
 
-  const continueToPublish = () => {
+  const generateContent = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a title first to generate content ideas');
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const suggestions = await GeminiService.generateBlogContent(title, content);
+      if (suggestions) {
+        setContent(prev => prev + (prev ? '\n\n' : '') + suggestions);
+      }
+    } catch (error) {
+      console.error('AI generation error:', error);
+      Alert.alert('Error', 'Failed to generate content. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const improveContent = async () => {
     if (!content.trim()) {
-      Alert.alert('Error', 'Please enter some content first');
+      Alert.alert('Error', 'Please write some content first to improve it');
       return;
     }
 
-    if (selectedPlatforms.length === 0) {
-      Alert.alert('Error', 'Please select at least one platform');
+    setAiLoading(true);
+    try {
+      const improved = await GeminiService.improveContent(content);
+      if (improved) {
+        setContent(improved);
+      }
+    } catch (error) {
+      console.error('AI improvement error:', error);
+      Alert.alert('Error', 'Failed to improve content. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const savePost = async (shouldPublish = false) => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a title');
       return;
     }
 
-    router.push({
-      pathname: '/publish',
-      params: {
+    setLoading(true);
+    try {
+      const excerpt = content.slice(0, 150) + (content.length > 150 ? '...' : '');
+      
+      const postData = {
+        title: title.trim(),
         content,
-        platforms: selectedPlatforms.join(','),
-        draftId: draftId || '',
-      },
-    });
+        excerpt,
+        published: shouldPublish,
+        user_id: user?.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (currentPost) {
+        // Update existing post
+        const { error } = await supabase
+          .from('blog_posts')
+          .update(postData)
+          .eq('id', currentPost.id);
+
+        if (error) throw error;
+      } else {
+        // Create new post
+        const { error } = await supabase
+          .from('blog_posts')
+          .insert([{
+            ...postData,
+            views: 0,
+            likes: 0,
+            created_at: new Date().toISOString(),
+          }]);
+
+        if (error) throw error;
+      }
+
+      // Clear draft
+      await StorageService.removeDraft('current');
+      
+      Alert.alert(
+        'Success', 
+        shouldPublish ? 'Post published successfully!' : 'Post saved as draft!',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (error) {
+      console.error('Save post error:', error);
+      Alert.alert('Error', 'Failed to save post');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const extractExcerpt = (text: string) => {
+    const plainText = text.replace(/[#*`_\[\]]/g, '').trim();
+    return plainText.slice(0, 150) + (plainText.length > 150 ? '...' : '');
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView className="flex-1 bg-gray-900">
       <KeyboardAvoidingView 
         className="flex-1" 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView className="flex-1 p-6">
-          {/* Content Editor */}
-          <View className="bg-white p-4 rounded-lg shadow-sm mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-3">Create Your Post</Text>
+        {/* Header */}
+        <View className="px-6 py-4 border-b border-gray-800">
+          <View className="flex-row justify-between items-center">
+            <TouchableOpacity onPress={() => router.back()}>
+              <Text className="text-blue-400 text-lg">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-white text-lg font-semibold">
+              {currentPost ? 'Edit Post' : 'New Post'}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => savePost(false)}
+              disabled={loading}
+            >
+              <Text className="text-blue-400 text-lg">
+                {loading ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView className="flex-1 px-6">
+          {/* Title Input */}
+          <View className="py-4">
             <TextInput
-              className="border border-gray-300 rounded-lg p-3 min-h-32"
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Enter your blog post title..."
+              placeholderTextColor="#6B7280"
+              className="text-white text-xl font-semibold bg-transparent border-b border-gray-700 pb-2"
               multiline
-              placeholder="What's on your mind?"
-              value={content}
-              onChangeText={setContent}
-              textAlignVertical="top"
             />
-            <Text className="text-gray-500 text-sm mt-2">{content.length}/280 characters</Text>
           </View>
 
-          {/* AI Suggestions */}
-          <View className="bg-white p-4 rounded-lg shadow-sm mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-3">AI Suggestions</Text>
-            <View className="flex-row mb-3">
-              <TouchableOpacity 
-                className="bg-primary-600 px-4 py-2 rounded-lg mr-3"
-                onPress={generateSuggestions}
-                disabled={loadingSuggestions}
+          {/* AI Assistance */}
+          <View className="py-4 border-b border-gray-800">
+            <Text className="text-gray-300 text-sm mb-3">AI Assistance</Text>
+            <View className="flex-row space-x-3">
+              <TouchableOpacity
+                onPress={generateContent}
+                disabled={aiLoading}
+                className="bg-purple-600 px-4 py-2 rounded-lg flex-1"
               >
-                <Text className="text-white font-medium">
-                  {loadingSuggestions ? 'Improving...' : 'Improve Content'}
+                <Text className="text-white text-center font-medium">
+                  {aiLoading ? 'Generating...' : '✨ Generate Ideas'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                className="bg-gray-600 px-4 py-2 rounded-lg"
-                onPress={generateFromPrompt}
-                disabled={loadingSuggestions}
+              <TouchableOpacity
+                onPress={improveContent}
+                disabled={aiLoading}
+                className="bg-green-600 px-4 py-2 rounded-lg flex-1"
               >
-                <Text className="text-white font-medium">Generate Ideas</Text>
+                <Text className="text-white text-center font-medium">
+                  {aiLoading ? 'Improving...' : '🚀 Improve'}
+                </Text>
               </TouchableOpacity>
             </View>
-            
-            {suggestions.map((suggestion, index) => (
-              <TouchableOpacity 
-                key={index}
-                className="bg-gray-50 p-3 rounded-lg mb-2"
-                onPress={() => setContent(suggestion)}
-              >
-                <Text className="text-gray-900">{suggestion}</Text>
-                <Text className="text-primary-600 text-sm mt-1">Tap to use</Text>
-              </TouchableOpacity>
-            ))}
           </View>
 
-          {/* Platform Selection */}
-          <View className="bg-white p-4 rounded-lg shadow-sm mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-3">Select Platforms</Text>
-            <View className="flex-row flex-wrap">
-              {platforms.map(platform => (
-                <TouchableOpacity
-                  key={platform.id}
-                  className={`px-4 py-2 rounded-lg mr-3 mb-3 ${
-                    selectedPlatforms.includes(platform.id) 
-                      ? platform.color 
-                      : 'bg-gray-200'
-                  }`}
-                  onPress={() => togglePlatform(platform.id)}
-                >
-                  <Text className={
-                    selectedPlatforms.includes(platform.id) 
-                      ? 'text-white font-medium' 
-                      : 'text-gray-600'
-                  }>
-                    {platform.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          {/* Content Editor */}
+          <View className="py-4 flex-1">
+            <Text className="text-gray-300 text-sm mb-3">Content (Markdown supported)</Text>
+            <TextInput
+              value={content}
+              onChangeText={setContent}
+              placeholder="Start writing your blog post... You can use markdown formatting."
+              placeholderTextColor="#6B7280"
+              className="text-white bg-gray-800 rounded-lg p-4 text-base leading-6"
+              multiline
+              style={{ minHeight: 300, textAlignVertical: 'top' }}
+            />
           </View>
+
+          {/* Preview */}
+          {content && (
+            <View className="py-4 border-t border-gray-800">
+              <Text className="text-gray-300 text-sm mb-3">Excerpt Preview</Text>
+              <View className="bg-gray-800 rounded-lg p-4">
+                <Text className="text-gray-300 text-sm">
+                  {extractExcerpt(content)}
+                </Text>
+              </View>
+            </View>
+          )}
         </ScrollView>
 
-        {/* Action Buttons */}
-        <View className="p-6 bg-white border-t border-gray-200">
-          <View className="flex-row">
-            <TouchableOpacity 
-              className="bg-gray-200 px-6 py-3 rounded-lg flex-1 mr-3"
-              onPress={saveDraft}
-            >
-              <Text className="text-gray-800 font-semibold text-center">Save Draft</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              className="bg-primary-600 px-6 py-3 rounded-lg flex-1"
-              onPress={continueToPublish}
-            >
-              <Text className="text-white font-semibold text-center">Continue</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Publish Button */}
+        <View className="px-6 py-4 border-t border-gray-800">
+          <TouchableOpacity
+            onPress={() => savePost(true)}
+            disabled={loading || !title.trim()}
+            className={`py-4 rounded-lg ${
+              loading || !title.trim() 
+                ? 'bg-gray-600' 
+                : 'bg-blue-600'
+            }`}
+          >
+            <Text className="text-white text-center font-semibold text-lg">
+              {loading ? 'Publishing...' : published ? 'Update Post' : 'Publish Post'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

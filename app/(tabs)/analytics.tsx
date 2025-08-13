@@ -1,164 +1,169 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AyrshareService } from '../../lib/services/ayrshare';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase, BlogPost } from '../../lib/supabase';
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
-  const [posts, setPosts] = useState([]);
-  const [analytics, setAnalytics] = useState({
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
     totalPosts: 0,
+    totalViews: 0,
     totalLikes: 0,
-    totalShares: 0,
-    totalComments: 0,
-    avgEngagement: 0,
+    avgViews: 0,
   });
-  const [refreshing, setRefreshing] = useState(false);
-  const [timeFilter, setTimeFilter] = useState('7d');
 
   useEffect(() => {
     if (user) {
       loadAnalytics();
     }
-  }, [user, timeFilter]);
+  }, [user]);
 
   const loadAnalytics = async () => {
+    setLoading(true);
     try {
-      const recentPosts = await AyrshareService.getRecentPosts();
-      setPosts(recentPosts.data || []);
+      const { data, error } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('published', true)
+        .order('views', { ascending: false });
 
-      // Calculate analytics
-      const totalPosts = recentPosts.data?.length || 0;
-      let totalLikes = 0;
-      let totalShares = 0;
-      let totalComments = 0;
+      if (error) throw error;
 
-      // In a real app, you'd fetch actual engagement metrics
-      // For demo purposes, we'll simulate some data
-      recentPosts.data?.forEach((post: any) => {
-        totalLikes += Math.floor(Math.random() * 100);
-        totalShares += Math.floor(Math.random() * 50);
-        totalComments += Math.floor(Math.random() * 20);
-      });
+      const posts = data || [];
+      setPosts(posts);
 
-      const avgEngagement = totalPosts > 0 ? Math.floor((totalLikes + totalShares + totalComments) / totalPosts) : 0;
-
-      setAnalytics({
-        totalPosts,
+      const totalViews = posts.reduce((sum, post) => sum + post.views, 0);
+      const totalLikes = posts.reduce((sum, post) => sum + post.likes, 0);
+      
+      setStats({
+        totalPosts: posts.length,
+        totalViews,
         totalLikes,
-        totalShares,
-        totalComments,
-        avgEngagement,
+        avgViews: posts.length > 0 ? Math.round(totalViews / posts.length) : 0,
       });
     } catch (error) {
       console.error('Load analytics error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadAnalytics();
-    setRefreshing(false);
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  const timeFilters = [
-    { id: '7d', label: 'Last 7 Days' },
-    { id: '30d', label: 'Last 30 Days' },
-    { id: '90d', label: 'Last 3 Months' },
-  ];
+  if (!user) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-900">
+        <View className="flex-1 justify-center items-center px-6">
+          <Text className="text-white text-xl text-center">
+            Please sign in to view analytics
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <ScrollView 
+    <SafeAreaView className="flex-1 bg-gray-900">
+      <View className="px-6 py-4 border-b border-gray-800">
+        <Text className="text-white text-2xl font-bold">Analytics</Text>
+        <Text className="text-gray-400 text-sm">Track your blog post performance</Text>
+      </View>
+
+      <ScrollView
         className="flex-1"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={loadAnalytics} />
+        }
       >
-        {/* Header */}
-        <View className="bg-white px-6 py-4 border-b border-gray-200">
-          <Text className="text-2xl font-bold text-gray-900">Analytics</Text>
-          <Text className="text-gray-600">Track your social media performance</Text>
+        {/* Overview Stats */}
+        <View className="px-6 py-4">
+          <Text className="text-white text-lg font-semibold mb-4">Overview</Text>
+          <View className="flex-row flex-wrap">
+            <View className="bg-gray-800 rounded-lg p-4 mr-3 mb-3 flex-1 min-w-[45%]">
+              <Text className="text-gray-400 text-sm">Total Posts</Text>
+              <Text className="text-white text-2xl font-bold">{stats.totalPosts}</Text>
+            </View>
+            <View className="bg-gray-800 rounded-lg p-4 mb-3 flex-1 min-w-[45%]">
+              <Text className="text-gray-400 text-sm">Total Views</Text>
+              <Text className="text-white text-2xl font-bold">{stats.totalViews.toLocaleString()}</Text>
+            </View>
+            <View className="bg-gray-800 rounded-lg p-4 mr-3 mb-3 flex-1 min-w-[45%]">
+              <Text className="text-gray-400 text-sm">Total Likes</Text>
+              <Text className="text-white text-2xl font-bold">{stats.totalLikes}</Text>
+            </View>
+            <View className="bg-gray-800 rounded-lg p-4 mb-3 flex-1 min-w-[45%]">
+              <Text className="text-gray-400 text-sm">Avg Views</Text>
+              <Text className="text-white text-2xl font-bold">{stats.avgViews}</Text>
+            </View>
+          </View>
         </View>
 
-        <View className="p-6">
-          {/* Time Filter */}
-          <View className="flex-row mb-6">
-            {timeFilters.map(filter => (
-              <TouchableOpacity
-                key={filter.id}
-                className={`px-4 py-2 rounded-lg mr-3 ${
-                  timeFilter === filter.id ? 'bg-primary-600' : 'bg-gray-200'
-                }`}
-                onPress={() => setTimeFilter(filter.id)}
-              >
-                <Text className={
-                  timeFilter === filter.id ? 'text-white font-medium' : 'text-gray-600'
-                }>
-                  {filter.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Overview Stats */}
-          <View className="grid grid-cols-2 gap-4 mb-6">
-            <View className="bg-white p-4 rounded-lg shadow-sm">
-              <Text className="text-2xl font-bold text-primary-600">{analytics.totalPosts}</Text>
-              <Text className="text-gray-600">Total Posts</Text>
-            </View>
-            <View className="bg-white p-4 rounded-lg shadow-sm">
-              <Text className="text-2xl font-bold text-green-600">{analytics.avgEngagement}</Text>
-              <Text className="text-gray-600">Avg Engagement</Text>
-            </View>
-          </View>
-
-          {/* Engagement Breakdown */}
-          <View className="bg-white p-4 rounded-lg shadow-sm mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-4">Engagement Breakdown</Text>
-            <View className="space-y-3">
-              <View className="flex-row justify-between items-center">
-                <Text className="text-gray-600">Likes</Text>
-                <Text className="text-lg font-semibold text-red-500">{analytics.totalLikes}</Text>
-              </View>
-              <View className="flex-row justify-between items-center">
-                <Text className="text-gray-600">Shares</Text>
-                <Text className="text-lg font-semibold text-green-500">{analytics.totalShares}</Text>
-              </View>
-              <View className="flex-row justify-between items-center">
-                <Text className="text-gray-600">Comments</Text>
-                <Text className="text-lg font-semibold text-blue-500">{analytics.totalComments}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Top Performing Posts */}
-          <View className="bg-white p-4 rounded-lg shadow-sm">
-            <Text className="text-lg font-semibold text-gray-900 mb-4">Recent Posts Performance</Text>
-            {posts.length === 0 ? (
-              <Text className="text-gray-600 text-center py-8">
-                No posts to analyze yet. Create your first post!
+        {/* Top Posts */}
+        <View className="px-6 py-4 border-t border-gray-800">
+          <Text className="text-white text-lg font-semibold mb-4">Top Performing Posts</Text>
+          {posts.length === 0 ? (
+            <View className="bg-gray-800 rounded-lg p-6 items-center">
+              <Text className="text-gray-400 text-center">
+                No published posts yet
               </Text>
-            ) : (
-              posts.slice(0, 5).map((post: any, index) => (
-                <View key={index} className="border-b border-gray-100 py-3 last:border-b-0">
-                  <Text className="text-gray-900 font-medium mb-2" numberOfLines={2}>
-                    {post.post || post.content || 'Post content'}
-                  </Text>
-                  <View className="flex-row justify-between">
-                    <Text className="text-gray-500 text-sm">
-                      {new Date(post.created_at || post.createdAt).toLocaleDateString()}
+              <Text className="text-gray-500 text-sm text-center mt-2">
+                Publish some posts to see analytics
+              </Text>
+            </View>
+          ) : (
+            posts.slice(0, 10).map((post, index) => (
+              <View key={post.id} className="bg-gray-800 rounded-lg p-4 mb-3">
+                <View className="flex-row items-start justify-between mb-2">
+                  <View className="flex-1 mr-3">
+                    <Text className="text-white font-semibold text-base">
+                      {post.title}
                     </Text>
-                    <View className="flex-row space-x-4">
-                      <Text className="text-red-500 text-sm">❤️ {Math.floor(Math.random() * 100)}</Text>
-                      <Text className="text-green-500 text-sm">🔄 {Math.floor(Math.random() * 50)}</Text>
-                      <Text className="text-blue-500 text-sm">💬 {Math.floor(Math.random() * 20)}</Text>
-                    </View>
+                    <Text className="text-gray-400 text-sm">
+                      Published {formatDate(post.created_at)}
+                    </Text>
+                  </View>
+                  <View className="bg-blue-600 rounded-full w-6 h-6 items-center justify-center">
+                    <Text className="text-white text-xs font-bold">
+                      {index + 1}
+                    </Text>
                   </View>
                 </View>
-              ))
-            )}
-          </View>
+                
+                <View className="flex-row justify-between items-center">
+                  <View className="flex-row space-x-4">
+                    <View className="flex-row items-center">
+                      <Text className="text-gray-400 text-sm">👁 </Text>
+                      <Text className="text-white text-sm font-medium">
+                        {post.views.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center">
+                      <Text className="text-gray-400 text-sm">❤️ </Text>
+                      <Text className="text-white text-sm font-medium">
+                        {post.likes}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View className="flex-row items-center">
+                    <Text className="text-gray-400 text-xs">
+                      {((post.likes / Math.max(post.views, 1)) * 100).toFixed(1)}% engagement
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

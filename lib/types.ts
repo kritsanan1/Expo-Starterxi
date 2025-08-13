@@ -1,16 +1,14 @@
 
-export interface Post {
+export interface BlogPost {
   id: string;
+  title: string;
   content: string;
-  platforms: string[];
-  published_at?: string;
-  status: 'draft' | 'published' | 'scheduled';
-  engagement?: {
-    likes: number;
-    shares: number;
-    comments: number;
-  };
+  excerpt?: string;
+  published: boolean;
+  views: number;
+  likes: number;
   created_at: string;
+  updated_at: string;
   user_id: string;
 }
 
@@ -24,7 +22,14 @@ export interface User {
 
 export interface Draft {
   id: string;
+  title: string;
   content: string;
-  platforms: string[];
   created_at: string;
+}
+
+export interface PostAnalytics {
+  post_id: string;
+  views: number;
+  likes: number;
+  date: string;
 }

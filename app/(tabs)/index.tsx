@@ -1,165 +1,143 @@
-
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
-import { AyrshareService } from '../../lib/services/ayrshare';
-import { Post } from '../../lib/types';
-import { StorageService } from '../../lib/services/storage';
+import { supabase, BlogPost } from '../../lib/supabase';
 
-export default function DashboardScreen() {
-  const { user, loading } = useAuth();
+export default function HomeScreen() {
+  const { user } = useAuth();
   const router = useRouter();
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [drafts, setDrafts] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [userStats, setUserStats] = useState({
-    postsThisMonth: 0,
-    totalEngagement: 0,
-    topPerformingPost: null,
-  });
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/auth');
-    } else if (user) {
-      loadDashboardData();
+    if (user) {
+      loadPosts();
     }
-  }, [user, loading]);
+  }, [user]);
 
-  const loadDashboardData = async () => {
+  const loadPosts = async () => {
+    setLoading(true);
     try {
-      // Load recent posts
-      const recentPosts = await AyrshareService.getRecentPosts();
-      setPosts(recentPosts.data || []);
+      const { data, error } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
 
-      // Load drafts
-      const savedDrafts = await StorageService.getDrafts();
-      setDrafts(savedDrafts);
-
-      // Calculate stats
-      const postsThisMonth = recentPosts.data?.filter((post: any) => {
-        const postDate = new Date(post.created_at);
-        const now = new Date();
-        return postDate.getMonth() === now.getMonth() && postDate.getFullYear() === now.getFullYear();
-      }).length || 0;
-
-      setUserStats({
-        postsThisMonth,
-        totalEngagement: 0, // Calculate from analytics
-        topPerformingPost: null,
-      });
+      if (error) throw error;
+      setPosts(data || []);
     } catch (error) {
-      console.error('Load dashboard error:', error);
+      console.error('Load posts error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadDashboardData();
-    setRefreshing(false);
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  if (loading) {
+  if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 justify-center items-center">
-        <Text className="text-gray-600">Loading...</Text>
+      <SafeAreaView className="flex-1 bg-gray-900">
+        <View className="flex-1 justify-center items-center px-6">
+          <Text className="text-white text-xl text-center mb-4">
+            Please sign in to view your blog posts
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push('/auth')}
+            className="bg-blue-600 px-6 py-3 rounded-lg"
+          >
+            <Text className="text-white font-semibold">Sign In</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <ScrollView 
-        className="flex-1"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {/* Header */}
-        <View className="bg-white px-6 py-4 border-b border-gray-200">
-          <Text className="text-2xl font-bold text-gray-900">Dashboard</Text>
-          <Text className="text-gray-600">Welcome back, {user?.email}</Text>
+    <SafeAreaView className="flex-1 bg-gray-900">
+      <View className="px-6 py-4 border-b border-gray-800">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-2xl font-bold">My Blog Posts</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/create')}
+            className="bg-blue-600 px-4 py-2 rounded-lg"
+          >
+            <Text className="text-white font-semibold">New Post</Text>
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Stats Cards */}
-        <View className="p-6">
-          <View className="flex-row justify-between mb-6">
-            <View className="bg-white p-4 rounded-lg shadow-sm flex-1 mr-3">
-              <Text className="text-2xl font-bold text-primary-600">{userStats.postsThisMonth}</Text>
-              <Text className="text-gray-600">Posts This Month</Text>
-            </View>
-            <View className="bg-white p-4 rounded-lg shadow-sm flex-1 ml-3">
-              <Text className="text-2xl font-bold text-primary-600">{drafts.length}</Text>
-              <Text className="text-gray-600">Saved Drafts</Text>
-            </View>
+      <ScrollView
+        className="flex-1"
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={loadPosts} />
+        }
+      >
+        {posts.length === 0 ? (
+          <View className="flex-1 justify-center items-center px-6 py-20">
+            <Text className="text-gray-400 text-lg text-center mb-4">
+              No blog posts yet
+            </Text>
+            <Text className="text-gray-500 text-center mb-6">
+              Start writing your first blog post with AI assistance
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/create')}
+              className="bg-blue-600 px-6 py-3 rounded-lg"
+            >
+              <Text className="text-white font-semibold">Create First Post</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Quick Actions */}
-          <View className="mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-3">Quick Actions</Text>
-            <View className="flex-row justify-between">
-              <TouchableOpacity 
-                className="bg-primary-600 px-6 py-3 rounded-lg flex-1 mr-2"
-                onPress={() => router.push('/create')}
+        ) : (
+          <View className="px-6 py-4">
+            {posts.map((post) => (
+              <TouchableOpacity
+                key={post.id}
+                onPress={() => router.push(`/(tabs)/create?id=${post.id}`)}
+                className="bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700"
               >
-                <Text className="text-white font-semibold text-center">Create Post</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                className="bg-white border border-primary-600 px-6 py-3 rounded-lg flex-1 ml-2"
-                onPress={() => router.push('/(tabs)/analytics')}
-              >
-                <Text className="text-primary-600 font-semibold text-center">View Analytics</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Recent Posts */}
-          <View className="mb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-3">Recent Posts</Text>
-            {posts.length === 0 ? (
-              <View className="bg-white p-6 rounded-lg shadow-sm">
-                <Text className="text-gray-600 text-center">No posts yet. Create your first post!</Text>
-              </View>
-            ) : (
-              posts.slice(0, 3).map((post, index) => (
-                <View key={index} className="bg-white p-4 rounded-lg shadow-sm mb-3">
-                  <Text className="text-gray-900 font-medium" numberOfLines={2}>
-                    {post.content || 'Post content'}
+                <View className="flex-row justify-between items-start mb-2">
+                  <Text className="text-white text-lg font-semibold flex-1 mr-2">
+                    {post.title || 'Untitled Post'}
                   </Text>
-                  <View className="flex-row justify-between items-center mt-2">
-                    <Text className="text-gray-500 text-sm">
-                      {post.platforms?.join(', ') || 'Multiple platforms'}
-                    </Text>
-                    <Text className="text-gray-500 text-sm">
-                      {new Date(post.created_at).toLocaleDateString()}
+                  <View className={`px-2 py-1 rounded ${post.published ? 'bg-green-600' : 'bg-yellow-600'}`}>
+                    <Text className="text-white text-xs">
+                      {post.published ? 'Published' : 'Draft'}
                     </Text>
                   </View>
                 </View>
-              ))
-            )}
-          </View>
 
-          {/* Drafts */}
-          {drafts.length > 0 && (
-            <View>
-              <Text className="text-lg font-semibold text-gray-900 mb-3">Recent Drafts</Text>
-              {drafts.slice(0, 2).map((draft: any) => (
-                <TouchableOpacity 
-                  key={draft.id} 
-                  className="bg-white p-4 rounded-lg shadow-sm mb-3"
-                  onPress={() => router.push(`/create?draft=${draft.id}`)}
-                >
-                  <Text className="text-gray-900 font-medium" numberOfLines={2}>
-                    {draft.content}
+                {post.excerpt && (
+                  <Text className="text-gray-300 text-sm mb-3" numberOfLines={2}>
+                    {post.excerpt}
                   </Text>
-                  <Text className="text-gray-500 text-sm mt-2">
-                    Draft • {new Date(draft.created_at).toLocaleDateString()}
+                )}
+
+                <View className="flex-row justify-between items-center">
+                  <Text className="text-gray-500 text-sm">
+                    {formatDate(post.created_at)}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+                  <View className="flex-row space-x-4">
+                    <Text className="text-gray-500 text-sm">
+                      👁 {post.views}
+                    </Text>
+                    <Text className="text-gray-500 text-sm">
+                      ❤️ {post.likes}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
