@@ -1,50 +1,111 @@
-# Welcome to your Expo app 👋
+# Project Name: Social Media Insight Pro
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Description
+An Expo-based mobile app for analyzing social media post performance with AI-driven trend suggestions, featuring analytics dashboards, enhanced authentication, and community engagement.
 
-## Get started
+## Primary Goals
+- Provide users insights into their social media post performance across platforms.
+- Suggest trending topics for new posts using AI.
+- Offer enhanced analytics features for premium subscribers.
+- Ensure responsive design across all platforms with robust authentication.
+- Foster community engagement through a dedicated forum.
+- Provide real-time notifications and personalized insights.
+- Expand platform integration to include Instagram and Facebook.
 
-1. Install dependencies
+----------------------------------------------------
 
-   ```bash
-   npm install
-   ```
+## Tech Stack & Environment
 
-2. Start the app
+**Frontend:** Vite + React + TypeScript + Tailwind CSS
 
-   ```bash
-   npx expo start
-   ```
+**Backend:** Supabase (PostgreSQL + Auth)
 
-In the output, you'll find options to open the app in a
+**Target Platform:** Single-Page Application
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+**Framework Versions & Config:** Latest stable versions
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+----------------------------------------------------
 
-## Get a fresh project
+## Requirements & Features
 
-When you're ready, run:
+### Core Features:
+1. **Home Screen:** Display a dashboard showing Twitter, LinkedIn, Instagram, and Facebook post performance (likes, shares, comments) via the Ayrshare API.
 
-```bash
-npm run reset-project
-```
+2. **Trends Screen:** Provide AI-driven trending topic suggestions for new posts using the Google Gemini API.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+3. **Authentication:** Use Supabase for Google OAuth, email/password authentication, and two-factor authentication.
 
-## Learn more
+4. **Subscription Management:** Restrict premium analytics features to Stripe subscribers.
 
-To learn more about developing your project with Expo, look at the following resources:
+5. **UI/UX:** Implement a professional, Tailwind-inspired UI with a blue-white theme, smooth transitions, and a dark mode option.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+6. **Platform Compatibility:** Ensure the app is responsive and works on iOS, Android, and web.
 
-## Join the community
+7. **Local Caching:** Use improved caching strategies for faster data retrieval and reduced API calls.
 
-Join our community of developers creating universal apps.
+8. **Real-Time Notifications:** Provide users with notifications for updates on post performance.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+9. **Community Forum:** Allow users to discuss trends and analytics in a dedicated forum space.
+
+10. **Advanced Filtering:** Enable sorting of analytics data by date, platform, and engagement type.
+
+11. **Personalized Insights:** Offer tailored recommendations based on user activity.
+
+### User Flows
+- User logs in using email/password, Google OAuth, or two-factor authentication.
+- Navigate through the home screen to view social media analytics.
+- Explore trending topics on the Trends Screen.
+- Access premium analytics features as a subscribed user.
+- Join discussions in the community forum.
+- Receive real-time notifications for post performance updates.
+- Utilize advanced filtering options for data analysis.
+
+### Business Rules
+- Premium analytics features are restricted to Stripe subscribers.
+- Authentication is required for accessing core app functionality.
+- Forum participation requires user authentication.
+
+----------------------------------------------------
+
+## UI/UX Design
+
+### Layout
+- Dashboard-style home screen displaying social media analytics.
+- Intuitive navigation for easy access to trends, analytics features, and community forum.
+
+### Look & Feel
+- Professional design inspired by Tailwind CSS.
+- Blue-white theme with a dark mode option.
+- Smooth transitions and consistent use of color palette and typography.
+
+### Pages
+- Home Screen
+- Trends Screen
+- Subscription Management Screen
+- Authentication Screen
+- Community Forum Screen
+
+### Components
+- Analytics Dashboard
+- Trending Topics Display
+- Subscription Management Tools
+- Notification System
+- Forum Discussion Board
+
+----------------------------------------------------
+
+## Data Model & Supabase Setup
+
+### Database Schema
+- Users Table: Stores user information, authentication details, and forum participation.
+- Analytics Table: Stores social media analytics data.
+- Subscriptions Table: Tracks user subscription status and access levels.
+- Forum Table: Manages forum posts and discussions.
+
+### Row-Level Security
+Enabled by default
+
+### Auth Requirements
+- Email/Password authentication via Supabase.
+- Google OAuth for quick login.
+- Two-factor authentication for enhanced security.
